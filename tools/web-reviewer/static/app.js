@@ -51,9 +51,14 @@ const elements = {
     btnRefresh: document.getElementById('btn-refresh'),
     fixLevel: document.getElementById('fix-level'),
 
-    // Lint results
-    lintResults: document.getElementById('lint-results'),
-    lintList: document.getElementById('lint-list'),
+    // Problems panel
+    problemsPanel: document.getElementById('problems-panel'),
+    problemsCount: document.getElementById('problems-count'),
+    problemsList: document.getElementById('problems-list'),
+    problemsContent: document.getElementById('problems-content'),
+    errorCount: document.getElementById('error-count'),
+    warningCount: document.getElementById('warning-count'),
+    btnToggleProblems: document.getElementById('btn-toggle-problems'),
 
     // Diff viewer
     diffViewer: document.getElementById('diff-viewer'),
@@ -249,9 +254,9 @@ async function selectScript(index) {
 
         // Show lint results if available
         if (script.lint_results && script.lint_results.length > 0) {
-            showLintResults(script.lint_results);
+            showProblemsPanel(script.lint_results);
         } else {
-            elements.lintResults.classList.add('hidden');
+            clearProblemsPanel();
         }
 
         // Reset edit mode
@@ -282,30 +287,412 @@ async function selectScript(index) {
     }
 }
 
-function showLintResults(diagnostics) {
-    elements.lintList.innerHTML = '';
+// Problems panel functions
+function showProblemsPanel(diagnostics) {
+    if (!elements.problemsList) return;
 
-    for (const diag of diagnostics) {
-        const div = document.createElement('div');
+    const errors = diagnostics.filter(d => d.severity === 1).length;
+    const warnings = diagnostics.filter(d => d.severity !== 1).length;
+    const total = diagnostics.length;
+
+    // Update counts
+    if (elements.errorCount) elements.errorCount.textContent = errors;
+    if (elements.warningCount) elements.warningCount.textContent = warnings;
+    if (elements.problemsCount) {
+        elements.problemsCount.textContent = total;
+        elements.problemsCount.className = 'problems-count' +
+            (errors > 0 ? ' has-errors' : (warnings > 0 ? ' has-warnings' : ''));
+    }
+
+    // Build problems list
+    if (diagnostics.length === 0) {
+        elements.problemsList.innerHTML = '<div class="problems-empty">No problems detected ✓</div>';
+        return;
+    }
+
+    elements.problemsList.innerHTML = '';
+
+    // Sort by severity (errors first), then by line number
+    const sorted = [...diagnostics].sort((a, b) => {
+        if (a.severity !== b.severity) return a.severity - b.severity;
+        const lineA = a.range?.start?.line || a.line || 0;
+        const lineB = b.range?.start?.line || b.line || 0;
+        return lineA - lineB;
+    });
+
+    // Get source code lines for context
+    const sourceLines = state.editor ? state.editor.getValue().split('\n') : [];
+
+    for (const diag of sorted) {
         const line = diag.range?.start?.line || diag.line || '?';
-        div.className = `lint-item ${diag.severity === 1 ? 'error' : 'warning'}`;
+        const col = diag.range?.start?.character || diag.column || 1;
+        const endCol = diag.range?.end?.character || col;
+        const severity = diag.severity === 1 ? 'error' : (diag.severity === 2 ? 'warning' : 'info');
+        const severityIcon = diag.severity === 1 ? '❌' : (diag.severity === 2 ? '⚠️' : 'ℹ️');
+        const code = diag.code || '';
+        const source = diag.source || 'ahk2';
+
+        // Get the actual source line
+        const lineNum = typeof line === 'number' ? line : parseInt(line, 10) || 0;
+        const sourceLine = lineNum > 0 && lineNum <= sourceLines.length ? sourceLines[lineNum - 1] : '';
+
+        const div = document.createElement('div');
+        div.className = `problem-item ${severity}`;
         div.innerHTML = `
-            <span class="line">Line ${line}</span>
-            <span class="message">${diag.message || 'Unknown issue'}</span>
+            <div class="problem-header">
+                <span class="problem-icon">${severityIcon}</span>
+                <span class="problem-location">
+                    <span class="problem-line">Line ${line}:${col}</span>
+                    ${code ? `<span class="problem-code">[${code}]</span>` : ''}
+                </span>
+                <span class="problem-source-tag">${source}</span>
+            </div>
+            <div class="problem-message">${escapeHtml(diag.message || 'Unknown issue')}</div>
+            ${sourceLine ? `<div class="problem-snippet"><code>${escapeHtml(sourceLine.trim())}</code></div>` : ''}
         `;
+
         // Click to go to line
         div.addEventListener('click', () => {
-            if (typeof line === 'number' && state.editor) {
+            if (state.editor) {
+                const ln = typeof line === 'number' ? line : parseInt(line, 10) || 1;
+                const cn = typeof col === 'number' ? col : parseInt(col, 10) || 1;
+                state.editor.revealLineInCenter(ln);
+                state.editor.setPosition({ lineNumber: ln, column: cn });
+                state.editor.focus();
+            }
+        });
+
+        elements.problemsList.appendChild(div);
+    }
+}
+
+function clearProblemsPanel() {
+    if (elements.problemsList) {
+        elements.problemsList.innerHTML = '<div class="problems-empty">Click "Lint" to analyze the script</div>';
+    }
+    if (elements.problemsCount) {
+        elements.problemsCount.textContent = '0';
+        elements.problemsCount.className = 'problems-count';
+    }
+    if (elements.errorCount) elements.errorCount.textContent = '0';
+    if (elements.warningCount) elements.warningCount.textContent = '0';
+}
+
+function toggleProblemsPanel() {
+    if (elements.problemsPanel) {
+        elements.problemsPanel.classList.toggle('collapsed');
+        // Trigger Monaco editor resize
+        if (state.editor) {
+            setTimeout(() => state.editor.layout(), 200);
+        }
+    }
+}
+
+// Panel resize functionality
+function initPanelResize() {
+    const panel = document.getElementById('problems-panel');
+    const handle = document.getElementById('panel-resize-handle');
+    if (!panel || !handle) return;
+
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    handle.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = panel.offsetWidth;
+        handle.classList.add('dragging');
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+
+        const diff = startX - e.clientX;
+        const newWidth = Math.min(800, Math.max(300, startWidth + diff));
+        panel.style.width = newWidth + 'px';
+
+        // Trigger Monaco editor resize
+        if (state.editor) {
+            state.editor.layout();
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            handle.classList.remove('dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Tab switching
+function switchTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.panel-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === `tab-${tabName}`);
+    });
+}
+
+// Full Analysis - runs lint + structure analysis + metrics
+async function analyzeStructure() {
+    if (!state.currentScript || !state.editor) return;
+
+    const statusEl = document.getElementById('analysis-status');
+    if (statusEl) statusEl.textContent = 'Analyzing...';
+
+    // First run lint to get latest diagnostics
+    try {
+        const result = await api(`/script-lint/${encodeURIComponent(state.currentScript.id)}`, {
+            method: 'POST'
+        });
+        state.currentScript.lint_results = result.diagnostics;
+        state.currentScript.errors = result.errors;
+        state.currentScript.warnings = result.warnings;
+
+        // Update problems panel too
+        showProblemsPanel(result.diagnostics || []);
+
+        // Update quality badge
+        let quality = 'good';
+        if (result.errors > 0) quality = 'error';
+        else if (result.warnings > 0) quality = 'warning';
+        elements.scriptQuality.textContent = quality;
+        elements.scriptQuality.className = `badge badge-${quality}`;
+
+    } catch (e) {
+        console.error('Lint failed:', e);
+    }
+
+    const content = state.editor.getValue();
+    const structure = parseAHKStructure(content);
+    const diagnostics = state.currentScript.lint_results || [];
+    const metrics = calculateMetrics(content, structure, diagnostics);
+
+    renderFullAnalysis(structure, diagnostics, metrics);
+
+    if (statusEl) statusEl.textContent = '';
+}
+
+function parseAHKStructure(code) {
+    const structure = {
+        classes: [],
+        functions: [],
+        hotkeys: [],
+        hotstrings: [],
+        variables: []
+    };
+
+    const lines = code.split('\n');
+    let currentClass = null;
+    let braceDepth = 0;
+    let classStartDepth = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineNum = i + 1;
+        const trimmed = line.trim();
+
+        // Track brace depth
+        const openBraces = (line.match(/\{/g) || []).length;
+        const closeBraces = (line.match(/\}/g) || []).length;
+
+        // Class detection
+        const classMatch = trimmed.match(/^class\s+(\w+)(?:\s+extends\s+(\w+))?/i);
+        if (classMatch) {
+            currentClass = {
+                name: classMatch[1],
+                extends: classMatch[2] || null,
+                line: lineNum,
+                methods: [],
+                properties: []
+            };
+            structure.classes.push(currentClass);
+            classStartDepth = braceDepth;
+        }
+
+        // Update brace depth after checking class
+        braceDepth += openBraces - closeBraces;
+
+        // Check if we exited the class
+        if (currentClass && braceDepth <= classStartDepth && closeBraces > 0) {
+            currentClass = null;
+        }
+
+        // Method/Function detection (inside class)
+        if (currentClass) {
+            const methodMatch = trimmed.match(/^(\w+)\s*\([^)]*\)\s*(?:\{|=>)?/);
+            if (methodMatch && !trimmed.startsWith('if') && !trimmed.startsWith('while') && !trimmed.startsWith('for')) {
+                currentClass.methods.push({
+                    name: methodMatch[1],
+                    line: lineNum,
+                    isStatic: trimmed.toLowerCase().startsWith('static ')
+                });
+            }
+
+            // Property detection
+            const propMatch = trimmed.match(/^(\w+)\s*:=/);
+            if (propMatch) {
+                currentClass.properties.push({
+                    name: propMatch[1],
+                    line: lineNum
+                });
+            }
+        } else {
+            // Standalone function detection
+            const funcMatch = trimmed.match(/^(\w+)\s*\([^)]*\)\s*\{?$/);
+            if (funcMatch && !trimmed.startsWith('if') && !trimmed.startsWith('while') && !trimmed.startsWith('for')) {
+                structure.functions.push({
+                    name: funcMatch[1],
+                    line: lineNum
+                });
+            }
+        }
+
+        // Hotkey detection
+        const hotkeyMatch = trimmed.match(/^([#!^+<>*~$]+)?([a-zA-Z0-9]+|[^\s:]+)::/);
+        if (hotkeyMatch && !trimmed.includes('::=')) {
+            structure.hotkeys.push({
+                key: hotkeyMatch[0].replace('::', ''),
+                line: lineNum
+            });
+        }
+
+        // Hotstring detection
+        const hotstringMatch = trimmed.match(/^:([^:]*):([^:]+)::/);
+        if (hotstringMatch) {
+            structure.hotstrings.push({
+                trigger: hotstringMatch[2],
+                options: hotstringMatch[1],
+                line: lineNum
+            });
+        }
+    }
+
+    return structure;
+}
+
+function renderStructureDiagram(structure, diagnostics) {
+    const container = document.getElementById('structure-diagram');
+    if (!container) return;
+
+    // Create a problem map for quick lookup
+    const problemLines = new Map();
+    for (const diag of diagnostics) {
+        const line = diag.range?.start?.line || diag.line;
+        if (line) {
+            if (!problemLines.has(line)) {
+                problemLines.set(line, []);
+            }
+            problemLines.set(line, [...problemLines.get(line), diag]);
+        }
+    }
+
+    // Build tree view (more reliable than Mermaid for complex structures)
+    let html = '<div class="structure-tree">';
+
+    // Classes
+    for (const cls of structure.classes) {
+        const hasError = hasProblemsNearLine(cls.line, problemLines, 5);
+        html += `<div class="tree-node tree-class ${hasError}" data-line="${cls.line}">`;
+        html += `📦 class ${cls.name}`;
+        if (cls.extends) html += ` extends ${cls.extends}`;
+        html += `</div>`;
+
+        for (const method of cls.methods) {
+            const methodError = hasProblemsNearLine(method.line, problemLines, 3);
+            html += `<div class="tree-node tree-method ${methodError}" data-line="${method.line}">`;
+            html += `${method.isStatic ? '⚡' : '🔹'} ${method.name}()`;
+            html += `</div>`;
+        }
+
+        for (const prop of cls.properties) {
+            const propError = hasProblemsNearLine(prop.line, problemLines, 2);
+            html += `<div class="tree-node tree-property ${propError}" data-line="${prop.line}">`;
+            html += `📌 ${prop.name}`;
+            html += `</div>`;
+        }
+    }
+
+    // Functions
+    if (structure.functions.length > 0) {
+        html += `<div class="tree-node" style="margin-top: 10px; color: var(--text-secondary);">Functions</div>`;
+        for (const func of structure.functions) {
+            const funcError = hasProblemsNearLine(func.line, problemLines, 3);
+            html += `<div class="tree-node tree-function ${funcError}" data-line="${func.line}">`;
+            html += `🔧 ${func.name}()`;
+            html += `</div>`;
+        }
+    }
+
+    // Hotkeys
+    if (structure.hotkeys.length > 0) {
+        html += `<div class="tree-node" style="margin-top: 10px; color: var(--text-secondary);">Hotkeys</div>`;
+        for (const hk of structure.hotkeys) {
+            const hkError = hasProblemsNearLine(hk.line, problemLines, 2);
+            html += `<div class="tree-node tree-hotkey ${hkError}" data-line="${hk.line}">`;
+            html += `⌨️ ${hk.key}`;
+            html += `</div>`;
+        }
+    }
+
+    // Hotstrings
+    if (structure.hotstrings.length > 0) {
+        html += `<div class="tree-node" style="margin-top: 10px; color: var(--text-secondary);">Hotstrings</div>`;
+        for (const hs of structure.hotstrings) {
+            const hsError = hasProblemsNearLine(hs.line, problemLines, 2);
+            html += `<div class="tree-node tree-hotstring ${hsError}" data-line="${hs.line}">`;
+            html += `📝 :${hs.options}:${hs.trigger}::`;
+            html += `</div>`;
+        }
+    }
+
+    // Empty state
+    if (structure.classes.length === 0 && structure.functions.length === 0 &&
+        structure.hotkeys.length === 0 && structure.hotstrings.length === 0) {
+        html = '<div class="structure-empty">No structure detected (simple script)</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Add click handlers to navigate to lines
+    container.querySelectorAll('.tree-node[data-line]').forEach(node => {
+        node.addEventListener('click', () => {
+            const line = parseInt(node.dataset.line, 10);
+            if (state.editor && line) {
                 state.editor.revealLineInCenter(line);
                 state.editor.setPosition({ lineNumber: line, column: 1 });
                 state.editor.focus();
             }
         });
-        div.style.cursor = 'pointer';
-        elements.lintList.appendChild(div);
-    }
+    });
+}
 
-    elements.lintResults.classList.remove('hidden');
+function hasProblemsNearLine(targetLine, problemLines, range) {
+    for (let i = targetLine - range; i <= targetLine + range; i++) {
+        const problems = problemLines.get(i);
+        if (problems && problems.length > 0) {
+            const hasError = problems.some(p => p.severity === 1);
+            return hasError ? 'tree-error' : 'tree-warning';
+        }
+    }
+    return '';
 }
 
 // Edit mode
@@ -459,10 +846,10 @@ async function lintCurrentScript() {
         renderScriptList();
 
         if (result.diagnostics && result.diagnostics.length > 0) {
-            showLintResults(result.diagnostics);
+            showProblemsPanel(result.diagnostics);
             toast(`Found ${result.errors} error(s), ${result.warnings} warning(s)`, 'warning');
         } else {
-            elements.lintResults.classList.add('hidden');
+            showProblemsPanel([]);
             toast('No issues found', 'success');
         }
 
@@ -729,6 +1116,22 @@ elements.btnFix.addEventListener('click', fixCurrentScript);
 elements.btnAcceptFix.addEventListener('click', acceptFix);
 elements.btnRejectFix.addEventListener('click', rejectFix);
 
+// Problems panel toggle
+if (elements.btnToggleProblems) {
+    elements.btnToggleProblems.addEventListener('click', toggleProblemsPanel);
+}
+
+// Tab switching
+document.querySelectorAll('.panel-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+// Structure analyze button
+const btnAnalyzeStructure = document.getElementById('btn-analyze-structure');
+if (btnAnalyzeStructure) {
+    btnAnalyzeStructure.addEventListener('click', analyzeStructure);
+}
+
 // Status buttons
 document.querySelectorAll('.status-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -742,6 +1145,7 @@ async function init() {
 
     try {
         await setupMonaco();
+        initPanelResize();
 
         showLoading('Loading scripts...');
 

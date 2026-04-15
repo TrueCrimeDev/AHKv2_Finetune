@@ -44,6 +44,7 @@ const AHK_THEME_DATA = {
 
     // Strings - orange
     { token: 'string', foreground: 'CE9178' },
+    { token: 'string.directive', foreground: 'CE9178' },
     { token: 'string.escape', foreground: 'D7BA7D' },
 
     // Numbers - light green
@@ -93,7 +94,9 @@ const AHK_LANGUAGE_DEF = {
       [/[ \t\r\n]+/, 'white'],
 
       // Directives at start of line: #Requires, #Include, etc.
-      [/^\s*#[a-zA-Z_]\w*\b/, 'keyword.directive'],
+      // The directive keyword is purple, rest of line is string color
+      [/^(\s*)(#[a-zA-Z_]\w*)(\s+)(.*)$/, ['white', 'keyword.directive', 'white', 'string.directive']],
+      [/^(\s*)(#[a-zA-Z_]\w*)$/, ['white', 'keyword.directive']],
 
       // Hotstring definition: :options:trigger::replacement
       [/^:[^:]*:[^:]+::/, 'keyword.keys'],

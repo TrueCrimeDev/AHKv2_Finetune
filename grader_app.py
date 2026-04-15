@@ -59,7 +59,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="AHK v2 Finetune Grader") as demo:
     with gr.Row():
         with gr.Column(scale=2):
             prompt_display = gr.Textbox(label="Prompt (Input)", lines=4, interactive=False)
-            response_display = gr.Code(label="Response (Output)", language="autohotkey", lines=10, interactive=False)
+            response_display = gr.Code(label="Response (Output)", language=None, lines=10, interactive=False)
         with gr.Column(scale=1):
             status_label = gr.Label(value="Status: Ready")
             grade_display = gr.Markdown("### Grade: Not Graded")

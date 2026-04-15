@@ -74,15 +74,57 @@
                         </div>
                     </div>
 
-                    <!-- Code display (Monaco Editor) -->
-                    <div class="code-container">
-                        <div id="monaco-container"></div>
-                    </div>
+                    <!-- Editor and Problems panel container -->
+                    <div class="editor-problems-container">
+                        <!-- Code display (Monaco Editor) -->
+                        <div class="code-container">
+                            <div id="monaco-container"></div>
+                        </div>
 
-                    <!-- Lint results -->
-                    <div class="lint-results hidden" id="lint-results">
-                        <h3>Lint Results</h3>
-                        <div id="lint-list"></div>
+                        <!-- Problems Panel (Right side) -->
+                        <div class="problems-panel" id="problems-panel">
+                            <div class="resize-handle" id="panel-resize-handle"></div>
+                            <div class="problems-header">
+                                <div class="problems-tabs">
+                                    <button class="panel-tab" data-tab="problems">
+                                        Problems <span class="problems-count" id="problems-count">0</span>
+                                    </button>
+                                    <button class="panel-tab active" data-tab="structure">
+                                        Analysis
+                                    </button>
+                                </div>
+                                <div class="problems-actions">
+                                    <button class="btn-icon" id="btn-toggle-problems" title="Toggle Panel">
+                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                            <path d="M8 4l4 4H4l4-4z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="problems-content" id="problems-content">
+                                <!-- Problems Tab -->
+                                <div class="tab-content" id="tab-problems">
+                                    <div class="problems-summary" id="problems-summary">
+                                        <span class="error-count"><span id="error-count">0</span> Errors</span>
+                                        <span class="warning-count"><span id="warning-count">0</span> Warnings</span>
+                                    </div>
+                                    <div class="problems-list" id="problems-list">
+                                        <!-- Problems loaded dynamically -->
+                                        <div class="problems-empty">Click "Lint" to analyze the script</div>
+                                    </div>
+                                </div>
+                                <!-- Analysis Tab -->
+                                <div class="tab-content active" id="tab-structure">
+                                    <div class="structure-toolbar">
+                                        <button class="btn btn-small btn-primary" id="btn-analyze-structure">Run Full Analysis</button>
+                                        <span class="analysis-status" id="analysis-status"></span>
+                                    </div>
+                                    <div class="analysis-container" id="structure-diagram">
+                                        <div class="structure-empty">Click "Run Full Analysis" to analyze script structure and quality</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Review actions -->
@@ -160,6 +202,8 @@
 
     <!-- Monaco Editor -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <!-- Mermaid for diagrams -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
     <script src="/static/ahk-language.js"></script>
     <script src="/static/app.js"></script>
 </body>

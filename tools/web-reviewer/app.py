@@ -26,12 +26,19 @@ PROJECT_ROOT = BASE_DIR.parent.parent
 SCRIPTS_DIR = PROJECT_ROOT / "data" / "Scripts"
 REVIEW_STATUS_FILE = PROJECT_ROOT / "data" / "review_status.json"
 
-# AHK v2 executable paths (Windows)
+# AHK v2 executable paths (Windows native and WSL)
 AHK_PATHS = [
+    # WSL paths
+    Path("/mnt/c/Program Files/AutoHotkey/v2/AutoHotkey64.exe"),
+    Path("/mnt/c/Program Files/AutoHotkey/v2/AutoHotkey32.exe"),
+    Path("/mnt/c/Program Files/AutoHotkey/AutoHotkey64.exe"),
+    Path("/mnt/c/Program Files/AutoHotkey/AutoHotkey32.exe"),
+    # Windows native paths
     Path(r"C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"),
     Path(r"C:\Program Files\AutoHotkey\v2\AutoHotkey32.exe"),
     Path(r"C:\Program Files\AutoHotkey\AutoHotkey64.exe"),
     Path(r"C:\Program Files\AutoHotkey\AutoHotkey32.exe"),
+    # Environment variable override
     Path(os.environ.get("AHK_PATH", "")) if os.environ.get("AHK_PATH") else None,
 ]
 
@@ -159,20 +166,38 @@ async def run_script(script_id: str):
 
     script_path = script["absolute_path"]
 
+    # Convert WSL path to Windows path for the script
+    if script_path.startswith("/mnt/"):
+        # /mnt/c/... -> C:\...
+        drive = script_path[5].upper()
+        win_script_path = f"{drive}:{script_path[6:]}".replace("/", "\\")
+    else:
+        win_script_path = script_path
+
     try:
-        # Run the script (non-blocking, just launch it)
-        # Use subprocess.Popen to launch without waiting
-        process = subprocess.Popen(
-            [str(ahk_exe), script_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
-        )
+        # Check if we're in WSL
+        is_wsl = os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()
+
+        if is_wsl:
+            # Use cmd.exe to launch AHK from WSL
+            win_ahk_path = str(ahk_exe).replace("/mnt/c/", "C:\\").replace("/", "\\")
+            cmd = f'cmd.exe /c start "" "{win_ahk_path}" "{win_script_path}"'
+            process = subprocess.Popen(cmd, shell=True)
+        else:
+            # Native Windows
+            process = subprocess.Popen(
+                [str(ahk_exe), win_script_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+            )
+
         return {
             "success": True,
-            "message": f"Script launched with PID {process.pid}",
+            "message": f"Script launched",
             "pid": process.pid,
-            "ahk_exe": str(ahk_exe)
+            "ahk_exe": str(ahk_exe),
+            "script_path": win_script_path
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to run script: {str(e)}")

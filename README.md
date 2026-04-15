@@ -1,6 +1,35 @@
-# OSS 20B Fine Tuning with Unsloth QLoRA
+# AHK Finetune - AutoHotkey v2 Training Data
 
-This repo fine tunes `openai/gpt-oss-20b` with Unsloth QLoRA, merges adapters to a full HF checkpoint, and optionally converts to GGUF for local inference in LM Studio or llama.cpp.
+Fine-tuning dataset infrastructure for AutoHotkey v2 with ~1,873 example scripts, validation tooling, and a web-based review UI.
+
+## Web Reviewer (Main Tool)
+
+Interactive web UI for reviewing, grading, and curating AHK v2 training scripts.
+
+```bash
+# From repo root:
+./reviewer          # Linux/WSL
+reviewer.bat        # Windows
+
+# Or manually:
+cd tools/web-reviewer
+python app.py
+```
+
+Open **http://localhost:8000** in your browser.
+
+**Features:**
+- Browse scripts by category with syntax highlighting
+- Run LSP linter to check for errors
+- AI-powered script analysis and fixes
+- Mark scripts: approved, needs_fix, rejected, skip
+- Track review progress across all scripts
+
+---
+
+## Fine-Tuning with Unsloth QLoRA
+
+This repo also supports fine-tuning `openai/gpt-oss-20b` with Unsloth QLoRA, merging adapters to a full HF checkpoint, and converting to GGUF for local inference.
 
 ## Quick start Bash
 python -m venv .venv

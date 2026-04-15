@@ -4,6 +4,25 @@
 
 This repository contains a fine-tuning dataset infrastructure for AutoHotkey v2 examples. It includes ~1,873 AHK v2 example scripts, validation tooling, and dataset preparation workflows.
 
+## Web Reviewer (Primary Tool)
+
+Interactive web UI for reviewing and grading AHK v2 training scripts.
+
+```bash
+./reviewer          # Linux/WSL (from repo root)
+reviewer.bat        # Windows
+# Or: cd tools/web-reviewer && python app.py
+```
+
+**URL:** http://localhost:8000
+
+**Features:**
+- Browse scripts by category with syntax highlighting
+- LSP linter integration for error detection
+- AI-powered analysis and fixes (Summarize, Fix buttons)
+- Review status tracking (approved, needs_fix, rejected, skip)
+- Progress tracking across all ~1,873 scripts
+
 ## Agent Harness
 
 The project includes an AI-powered agent harness for validating and fixing example scripts.
@@ -82,7 +101,12 @@ ahk-finetune/
 │   └── prepared/          # Dataset splits (train/val/test)
 ├── docs/                  # Documentation
 ├── scripts/               # Existing tooling
+├── reviewer               # Launcher script (Linux/WSL)
+├── reviewer.bat           # Launcher script (Windows)
 ├── tools/
+│   ├── web-reviewer/      # Web UI for script review (PRIMARY TOOL)
+│   │   ├── app.py         # FastAPI server
+│   │   └── services/      # Linter, fixer, summarizer
 │   ├── agent-harness/     # AI agent harness
 │   │   ├── agent.py       # Main CLI agent
 │   │   └── rules_engine.py # Rules parser
