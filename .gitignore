@@ -7,3 +7,7 @@ data/prepared/
 *.gguf
 
 Lib/
+
+# Clipboard capture dumps carry absolute local paths
+*.dat
+clipboard_history.dat
